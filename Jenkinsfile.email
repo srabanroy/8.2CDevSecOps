@@ -8,7 +8,7 @@ pipeline {
     triggers { pollSCM('* * * * *') }
     environment {
         // This is a recipient address, not an SMTP password.
-        NOTIFY_EMAIL = 'REPLACE_WITH_YOUR_EMAIL'
+        NOTIFY_EMAIL = 's226502636@deakin.edu.au'
     }
     stages {
         stage('Checkout') {
