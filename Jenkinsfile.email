@@ -1,0 +1,96 @@
+pipeline {
+    agent any
+    options {
+        skipDefaultCheckout(true)
+        disableConcurrentBuilds()
+        timeout(time: 30, unit: 'MINUTES')
+    }
+    triggers { pollSCM('* * * * *') }
+    environment {
+        // This is a recipient address, not an SMTP password.
+        NOTIFY_EMAIL = 'REPLACE_WITH_YOUR_EMAIL'
+    }
+    stages {
+        stage('Checkout') {
+            steps {
+                deleteDir()
+                checkout scm
+                script {
+                    if (env.NOTIFY_EMAIL == 'REPLACE_WITH_YOUR_EMAIL' || !env.NOTIFY_EMAIL.contains('@')) {
+                        error('Replace NOTIFY_EMAIL in Jenkinsfile.email with your receiving email address.')
+                    }
+                }
+                echo 'Tool: Git through the Jenkins Git plugin.'
+                sh 'mkdir -p ci-logs; git rev-parse HEAD; node --version; npm --version'
+            }
+        }
+        stage('Install Dependencies') {
+            steps {
+                echo 'Tool: npm. Install the application dependencies.'
+                sh 'npm install'
+            }
+        }
+        stage('Run Tests') {
+            steps {
+                echo 'Tool: npm invoking the upstream Snyk test script.'
+                script {
+                    int code = sh(returnStatus: true, script: 'npm test > ci-logs/tests.log 2>&1')
+                    sh 'cat ci-logs/tests.log'
+                    String result = code == 0 ? 'SUCCESS' : 'FAILURE'
+                    if (code != 0) {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE', catchInterruptions: false) {
+                            error("npm test returned ${code}; continuing so the security scan still runs.")
+                        }
+                    }
+                    emailext(
+                        to: env.NOTIFY_EMAIL,
+                        subject: "[${env.JOB_NAME} #${env.BUILD_NUMBER}] Run Tests: ${result}",
+                        body: "Stage: Run Tests\nResult: ${result}\nCommand: npm test\nExit code: ${code}\nBuild: ${env.BUILD_URL}\n\nThe current upstream test command invokes Snyk. Inspect the attached log: an authentication error is not a passing test.\n",
+                        attachmentsPattern: 'ci-logs/tests.log',
+                        mimeType: 'text/plain'
+                    )
+                }
+            }
+        }
+        stage('Generate Coverage Report') {
+            steps {
+                echo 'Tool: npm coverage script, if supplied by the application.'
+                sh 'npm run coverage || true'
+                sh '''
+                    if [ -s coverage/lcov.info ]; then
+                        echo 'Coverage exists: coverage/lcov.info'
+                    else
+                        echo 'No coverage report: the inspected upstream has no coverage script.'
+                    fi
+                '''
+            }
+        }
+        stage('NPM Audit (Security Scan)') {
+            steps {
+                echo 'Tool: npm audit. Check dependencies against security advisories.'
+                script {
+                    int code = sh(returnStatus: true, script: 'npm audit > ci-logs/npm-audit.log 2>&1')
+                    sh 'cat ci-logs/npm-audit.log'
+                    String result = code == 0 ? 'SUCCESS' : 'FAILURE'
+                    if (code != 0) {
+                        catchError(buildResult: 'UNSTABLE', stageResult: 'FAILURE', catchInterruptions: false) {
+                            error("npm audit returned ${code}; inspect the report for findings or an operational error.")
+                        }
+                    }
+                    emailext(
+                        to: env.NOTIFY_EMAIL,
+                        subject: "[${env.JOB_NAME} #${env.BUILD_NUMBER}] Security Scan: ${result}",
+                        body: "Stage: NPM Audit (Security Scan)\nResult: ${result}\nCommand: npm audit\nExit code: ${code}\nBuild: ${env.BUILD_URL}\n\nNonzero may mean vulnerability findings or an operational error. Inspect the attached report to distinguish them. The educational pipeline continues while retaining this outcome.\n",
+                        attachmentsPattern: 'ci-logs/npm-audit.log',
+                        mimeType: 'text/plain'
+                    )
+                }
+            }
+        }
+    }
+    post {
+        always {
+            archiveArtifacts artifacts: 'ci-logs/*.log', allowEmptyArchive: true
+        }
+    }
+}

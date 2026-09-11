@@ -1,0 +1,28 @@
+pipeline {
+    agent any
+    options { skipDefaultCheckout(true) }
+    triggers { pollSCM('* * * * *') }
+    stages {
+        stage('Build') {
+            steps { echo 'Task: Compile and package the application. Tool: Apache Maven.' }
+        }
+        stage('Unit and Integration Tests') {
+            steps { echo 'Task: Test individual units and interactions between components. Tools: JUnit with Maven Surefire and Failsafe.' }
+        }
+        stage('Code Analysis') {
+            steps { echo 'Task: Analyse source code for maintainability and coding-standard issues. Tool: SonarQube.' }
+        }
+        stage('Security Scan') {
+            steps { echo 'Task: Scan source code for insecure patterns and potential vulnerabilities. Tool: Semgrep.' }
+        }
+        stage('Deploy to Staging') {
+            steps { echo 'Task: Deploy the packaged application to a staging server such as AWS EC2. Tool: Ansible.' }
+        }
+        stage('Integration Tests on Staging') {
+            steps { echo 'Task: Verify application integrations in the staging environment. Tool: REST Assured.' }
+        }
+        stage('Deploy to Production') {
+            steps { echo 'Task: Deploy the validated application to a production server such as AWS EC2. Tool: Ansible.' }
+        }
+    }
+}

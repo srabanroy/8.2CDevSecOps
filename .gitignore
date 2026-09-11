@@ -12,3 +12,9 @@ npm-debug.log
 .idea/
 .dccache
 
+
+# Generated assessment outputs
+ci-logs/
+coverage/
+.env
+.env.*
